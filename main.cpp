@@ -9,6 +9,7 @@
 using TSuperRnd = std::ranlux48;
 using TRnd = std::mt19937_64;
 
+//one product of food (100g), e.g. cheese, meat, beans, etc
 class FoodProduct {
 private:
     std::string name;
@@ -29,6 +30,7 @@ public:
     }
 };
 
+//The wrapper for minimal and maximal amout of food
 class Constraint {
 private:
     double min;
@@ -45,29 +47,36 @@ public:
     }
 };
 
-class Weights {
+//The penal for overflow and deficency of one ingedient
+class Penal {
 private:
-    double tooLittle;
-    double tooMany;
+    double deficency;
+    double overflow;
 
 public:
-
+    double getDeficency() const { return deficency; }
+    double getOverflow() const { return overflow; }
 };
 
+//The whole daily diet, in other words amount of each food product
 class Diet {
 private:
-    double eval;
-    std::vector<double> foodsAmount;
-    std::vector<double> ingredientsSum;
-    std::vector<double> partalsEvals;
+    double eval;                               //the evaluate of current diet (the lower value is better)
+    std::vector<double> foodsAmount;           //the number of food products, units is [100g]
+    std::vector<double> ingredientsSum;        //optimizing reasons: current sum of ingredients (proteins, fats, carbohydrates, but also prices, etc)
+    std::vector<double> partalsEvals;          //optimizing reasons: partail evaluate for each in ingredient
 
 
 private:
 
-    void makeIngredientsSum(
-        const std::vector<FoodProduct>& foodsTable
+    static void makeFullIngredientsSum(
+        const std::vector<FoodProduct>& foodsTable,
+        const std::vector<double> &foodsAmount,
+        std::vector<double> &ingredientsSum
     ) {
         assert( foodsAmount.size() == foodsTable.size() );
+        assert( foodsTable.size() > 0 );
+        assert( foodsTable[0].getSize() == ingredientsSum.size() );
         for( size_t i=0 ; i<ingredientsSum.size() ; i++ ) {
             ingredientsSum[i] = 0;
             for( const auto &food : foodsTable ) {
@@ -76,15 +85,30 @@ private:
         }
     }
 
-    void makePartailEvals() {
-
+    static void makeFullPartailEvals(
+        const std::vector<double>& requirements,
+        const std::vector<double>& ingredientsSum,
+        std::vector<double>& partalsEvals
+    ) {
+        assert( requirements.size() == ingredientsSum.size() );
+        assert( requirements.size() == partalsEvals.size() );
+        for( size_t i=0 ; i<requirements.size() ; i++ ) {
+            partalsEvals[i] = requirements[i] - ingredientsSum[i];
+        }
     }
 
-    void fullEvaluate(
-        const std::vector<double>& requirements,
-        const std::vector<Weights>& weights
+    static double fullEvaluate(
+        std::vector<double>& partalsEvals,
+        const std::vector<Penal>& penals
     ) {
-
+        assert( partalsEvals.size() == penals.size() );
+        double eval = 0;
+        for( size_t i=0 ; i<partalsEvals.size() ; i++ ) {
+            const double tmp = partalsEvals[i];
+            const double penal =  partalsEvals[i] <= 0 ?  penals[i].getDeficency() : penals[i].getOverflow();
+            eval += tmp * tmp * penal;
+        }
+        return eval;
     }
 
 
@@ -117,7 +141,7 @@ public:
 
     void evaluate(
         const std::vector<double>& requirements,
-        const std::vector<Weights>& weights
+        const std::vector<Penal>& weights
     ) {
 
         for( size_t i=0 ; i<requirements.size() ; i++ ) {
